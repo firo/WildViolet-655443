@@ -99,6 +99,11 @@ def scrape_faq():
         soup = BeautifulSoup(driver.page_source, 'html.parser')
 
         total_extracted = 0
+        skipped_duplicates = 0
+        skipped_uncategorized = 0
+
+        # Track processed FAQs to avoid duplicates
+        processed_questions = set()
 
         # Find all accordion items first
         all_accordion_items = soup.find_all('div', class_=lambda x: x and 'accordion-item' in x if x else False)
@@ -142,7 +147,16 @@ def scrape_faq():
                     if answer_text.startswith(question_text):
                         answer_text = answer_text[len(question_text):].strip()
 
+                    # Check for duplicates - skip if we've already processed this question
+                    question_key = question_text.lower().strip()
+                    if question_key in processed_questions:
+                        skipped_duplicates += 1
+                        continue
+
+                    processed_questions.add(question_key)
+
                     # Determine category using multiple approaches
+                    # We check in order of specificity: most specific categories first
                     category = None
 
                     # Approach 1: Look at all parent elements for category indicators
@@ -157,14 +171,15 @@ def scrape_faq():
                         parent_classes = ' '.join(parent.get('class', [])).lower()
                         combined = f"{parent_id} {parent_classes}"
 
+                        # Check most specific categories first
                         if 'teleriscaldamento' in combined or 'teleris' in combined:
                             category = "teleriscaldamento"
                             break
-                        elif 'ambiente' in combined or 'environment' in combined:
-                            category = "ambiente"
-                            break
                         elif 'reti' in combined or 'rete' in combined or 'network' in combined:
                             category = "reti"
+                            break
+                        elif 'ambiente' in combined or 'environment' in combined:
+                            category = "ambiente"
                             break
                         elif 'acqua' in combined or 'water' in combined:
                             category = "acqua"
@@ -179,28 +194,59 @@ def scrape_faq():
                             heading_text = prev_heading.get_text().lower()
                             if 'teleriscaldamento' in heading_text:
                                 category = "teleriscaldamento"
-                            elif 'ambiente' in heading_text:
-                                category = "ambiente"
                             elif 'reti' in heading_text or 'rete' in heading_text:
                                 category = "reti"
+                            elif 'ambiente' in heading_text:
+                                category = "ambiente"
                             elif 'acqua' in heading_text:
                                 category = "acqua"
 
                     # Approach 3: Look at question/answer content for keywords
+                    # Use more specific keywords and check in order of specificity
                     if not category:
                         combined_text = (question_text + " " + answer_text).lower()
-                        if any(word in combined_text for word in ['teleriscaldamento', 'calore', 'scambiatore', 'caldaia']):
+
+                        # Teleriscaldamento - district heating keywords
+                        if any(word in combined_text for word in [
+                            'teleriscaldamento', 'scambiatore', 'caldaia',
+                            'sottocentrale', 'allacciamento teleriscaldamento',
+                            'calore', 'riscaldamento centralizzato'
+                        ]):
                             category = "teleriscaldamento"
-                        elif any(word in combined_text for word in ['rifiuti', 'raccolta', 'differenziata', 'termovalorizzatore']):
-                            category = "ambiente"
-                        elif any(word in combined_text for word in ['elettrica', 'elettrico', 'distribuzione energia', 'rete elettrica', 'ireti']):
+
+                        # Reti - electricity/gas network keywords (check before ambiente/acqua)
+                        elif any(word in combined_text for word in [
+                            'elettrica', 'elettrico', 'elettricità',
+                            'distribuzione energia', 'rete elettrica', 'ireti',
+                            'gas', 'bonus sociale gas', 'fornitura gas',
+                            'contatore elettrico', 'allacciamento elettrico',
+                            'corrente elettrica', 'energia elettrica'
+                        ]):
                             category = "reti"
-                        elif any(word in combined_text for word in ['acqua', 'acquedotto', 'fognatura', 'idrico']):
+
+                        # Ambiente - waste collection keywords
+                        elif any(word in combined_text for word in [
+                            'rifiuti', 'raccolta differenziata', 'iren ambiente',
+                            'termovalorizzatore', 'spazzamento', 'bidone',
+                            'umido', 'secco', 'carta', 'plastica', 'vetro',
+                            'ingombranti', 'raee', 'pulizia città'
+                        ]):
+                            category = "ambiente"
+
+                        # Acqua - water service keywords (most specific ones only)
+                        elif any(word in combined_text for word in [
+                            'acquedotto', 'fognatura', 'idrico', 'depurazione',
+                            'allacciamento idrico', 'servizio idrico integrato',
+                            'acqua potabile', 'perdita acqua', 'contatore acqua'
+                        ]):
                             category = "acqua"
 
-                    # Default to acqua if still no category found
+                    # If still no category found, skip this item (don't default to anything)
                     if not category:
-                        category = "acqua"
+                        skipped_uncategorized += 1
+                        if skipped_uncategorized <= 5:  # Log first 5
+                            logger.info(f"Skipping uncategorized FAQ: {question_text[:60]}...")
+                        continue
 
                     faq_item = {
                         "domanda": question_text,
@@ -221,6 +267,8 @@ def scrape_faq():
         # Count total FAQs extracted
         total_faqs = sum(len(v) for v in faq_data.values())
         logger.info(f"Successfully extracted {total_faqs} FAQs across all categories")
+        logger.info(f"Skipped {skipped_duplicates} duplicate FAQs")
+        logger.info(f"Skipped {skipped_uncategorized} uncategorized FAQs")
 
         for category, items in faq_data.items():
             logger.info(f"  - {category}: {len(items)} FAQs")
