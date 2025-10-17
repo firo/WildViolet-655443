@@ -1,6 +1,6 @@
 /**
  * @description Salesforce Apex class to invoke Gruppo Iren FAQ Scraper API
- * @author Francesco Iro
+ * @author Firo
  * @date 2025-10-17
  *
  * This class provides invocable methods to retrieve FAQ data from the Heroku-hosted
