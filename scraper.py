@@ -58,108 +58,111 @@ def scrape_faq():
             "reti": []
         }
 
-        # Try to find all FAQ items (questions)
-        # The structure might vary, so we'll try multiple selectors
-        faq_elements = driver.find_elements(By.CSS_SELECTOR, ".accordion-item, .faq-item, [class*='faq'], [class*='accordion']")
+        # Use JavaScript to expand all accordion items at once
+        # This avoids stale element references
+        expand_script = """
+        var buttons = document.querySelectorAll('button[data-bs-toggle="collapse"]');
+        console.log('Found ' + buttons.length + ' accordion buttons');
+        buttons.forEach(function(btn) {
+            try {
+                if (btn.getAttribute('aria-expanded') !== 'true') {
+                    btn.click();
+                }
+            } catch(e) {
+                console.log('Error clicking button:', e);
+            }
+        });
+        return buttons.length;
+        """
 
-        if not faq_elements:
-            logger.warning("No FAQ elements found with common selectors, trying alternative approach...")
-            # Try to find clickable elements that might be questions
-            faq_elements = driver.find_elements(By.CSS_SELECTOR, "[role='button'], .btn, button")
+        num_expanded = driver.execute_script(expand_script)
+        logger.info(f"Attempted to expand {num_expanded} accordion items")
 
-        logger.info(f"Found {len(faq_elements)} potential FAQ elements")
+        # Wait for accordions to expand
+        time.sleep(3)
 
-        # Get the full page source for parsing
+        # Now parse the fully expanded page with BeautifulSoup
         soup = BeautifulSoup(driver.page_source, 'html.parser')
 
-        # Try to find FAQ sections by category
-        # Look for sections or divs that might contain category information
-        for category_name in faq_data.keys():
-            logger.info(f"Searching for category: {category_name}")
+        # Find accordion items - common Bootstrap structure
+        accordion_items = soup.find_all(['div', 'section'], class_=lambda x: x and ('accordion' in x.lower() or 'faq' in x.lower()))
+        logger.info(f"Found {len(accordion_items)} accordion containers")
 
-            # Try to find elements that might contain this category
-            category_elements = driver.find_elements(By.XPATH,
-                f"//*[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), '{category_name.lower()}')]")
+        # Try finding individual FAQ items
+        # Look for Bootstrap accordion structure
+        faq_items = soup.find_all('div', class_=lambda x: x and 'accordion-item' in x)
 
-            if category_elements:
-                logger.info(f"Found {len(category_elements)} elements for category {category_name}")
+        if not faq_items:
+            # Try alternative structure
+            faq_items = soup.find_all('div', class_=lambda x: x and 'collapse' in x)
+            logger.info(f"Found {len(faq_items)} collapsible items")
+        else:
+            logger.info(f"Found {len(faq_items)} accordion items")
 
-        # Try a more general approach: find all clickable FAQ items
-        clickable_elements = driver.find_elements(By.CSS_SELECTOR,
-            "button[data-bs-toggle], [data-toggle], .accordion-button, [role='button']")
+        processed_count = 0
 
-        logger.info(f"Found {len(clickable_elements)} clickable elements")
-
-        processed_questions = set()
-
-        for idx, element in enumerate(clickable_elements[:50]):  # Limit to first 50 to avoid timeout
+        # Process each FAQ item
+        for item in faq_items:
             try:
-                # Get question text before clicking
-                question_text = element.text.strip()
+                # Find the question - usually in a button or header
+                question_elem = item.find_previous('button') or item.find_previous(['h2', 'h3', 'h4', 'h5'])
 
-                if not question_text or question_text in processed_questions:
+                if not question_elem:
+                    # Try finding within parent
+                    parent = item.find_parent('div', class_=lambda x: x and 'accordion-item' in x if x else False)
+                    if parent:
+                        question_elem = parent.find('button')
+
+                if not question_elem:
                     continue
 
-                processed_questions.add(question_text)
+                question_text = question_elem.get_text(strip=True)
 
-                # Scroll to element
-                driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", element)
-                time.sleep(0.5)
+                # Get the answer from the collapse div
+                answer_text = item.get_text(strip=True)
 
-                # Click to reveal answer
-                try:
-                    element.click()
-                    time.sleep(1)
-                except:
-                    # Try JavaScript click if regular click fails
-                    driver.execute_script("arguments[0].click();", element)
-                    time.sleep(1)
+                # Skip if no valid content
+                if not question_text or not answer_text or len(answer_text) < 10:
+                    continue
 
-                # Find the answer - look for nearby expanded content
-                try:
-                    # Try multiple selectors for answer content
-                    answer_element = driver.find_element(By.XPATH,
-                        "./following-sibling::*[contains(@class, 'collapse') or contains(@class, 'answer') or contains(@class, 'content')]")
-                    answer_text = answer_element.text.strip()
-                except:
-                    # Try finding within parent
-                    try:
-                        parent = element.find_element(By.XPATH, "./..")
-                        answer_element = parent.find_element(By.CSS_SELECTOR,
-                            ".collapse.show, .answer, .faq-answer, [class*='answer']")
-                        answer_text = answer_element.text.strip()
-                    except:
-                        answer_text = ""
+                # Remove the question from answer if it's included
+                if answer_text.startswith(question_text):
+                    answer_text = answer_text[len(question_text):].strip()
 
-                if answer_text and answer_text != question_text:
-                    # Try to determine category from surrounding context
-                    category = "acqua"  # Default category
+                # Determine category by looking at parent sections
+                category = "acqua"  # Default
 
-                    try:
-                        # Look for category indicators in parent elements
-                        parent_text = element.find_element(By.XPATH, "./ancestor::*[3]").text.lower()
+                # Look for category indicators in parent elements
+                parent_section = item.find_parent(['section', 'div'], id=True)
+                if parent_section:
+                    section_id = parent_section.get('id', '').lower()
+                    section_class = ' '.join(parent_section.get('class', [])).lower()
+                    section_text = parent_section.get_text().lower()
 
-                        if "teleriscaldamento" in parent_text:
-                            category = "teleriscaldamento"
-                        elif "ambiente" in parent_text:
-                            category = "ambiente"
-                        elif "reti" in parent_text or "rete" in parent_text:
-                            category = "reti"
-                        elif "acqua" in parent_text:
-                            category = "acqua"
-                    except:
-                        pass
+                    combined_text = f"{section_id} {section_class}"
 
-                    faq_item = {
-                        "domanda": question_text,
-                        "risposta": answer_text
-                    }
+                    if 'teleriscaldamento' in combined_text or 'teleriscaldamento' in section_text[:200]:
+                        category = "teleriscaldamento"
+                    elif 'ambiente' in combined_text or 'ambiente' in section_text[:200]:
+                        category = "ambiente"
+                    elif 'reti' in combined_text or 'rete' in combined_text:
+                        category = "reti"
+                    elif 'acqua' in combined_text or 'acqua' in section_text[:200]:
+                        category = "acqua"
 
-                    faq_data[category].append(faq_item)
-                    logger.info(f"Extracted FAQ {idx + 1}: {question_text[:50]}... -> {category}")
+                faq_item = {
+                    "domanda": question_text,
+                    "risposta": answer_text
+                }
+
+                faq_data[category].append(faq_item)
+                processed_count += 1
+
+                if processed_count <= 5:  # Log first few for debugging
+                    logger.info(f"Extracted FAQ: {question_text[:60]}... -> {category}")
 
             except Exception as e:
-                logger.warning(f"Error processing element {idx}: {str(e)}")
+                logger.warning(f"Error processing FAQ item: {str(e)}")
                 continue
 
         # Count total FAQs extracted
