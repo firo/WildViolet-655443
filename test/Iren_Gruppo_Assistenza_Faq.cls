@@ -3,7 +3,7 @@ public with sharing class Iren_Gruppo_Assistenza_Faq {
     private static final Integer TIMEOUT_MS = 120000;
     private static final List<String> VALID_CATEGORIES = new List<String>{'acqua', 'ambiente', 'reti', 'teleriscaldamento'};
 
-    @InvocableMethod(label='Cerco FAQ Gruppo Iren', description='Interroga le FAQ Assistenza Gruppo Iren', category='Iren Assistenza')
+    @InvocableMethod(label='Cerco FAQ Gruppo Iren' description='Questo servizio Apex interroga le FAQ Assistenza Gruppo Iren.')
     public static List<FaqResponse> getFaqsByCategory(List<FaqRequest> requests) {
         List<FaqResponse> responses = new List<FaqResponse>();
         for (FaqRequest request : requests) {
@@ -99,22 +99,22 @@ public with sharing class Iren_Gruppo_Assistenza_Faq {
     }
 
     public class FaqRequest {
-        @InvocableVariable(label='Categoria', description='acqua ambiente reti teleriscaldamento', required=true)
+        @InvocableVariable(required=true description='Required. Categoria FAQ: acqua, ambiente, reti, teleriscaldamento')
         public String categoria;
     }
 
     public class FaqResponse {
-        @InvocableVariable(label='Success', description='Request successful')
+        @InvocableVariable(description='Whether the request was successful')
         public Boolean success;
-        @InvocableVariable(label='Categoria', description='Category requested')
+        @InvocableVariable(description='The category requested')
         public String categoria;
-        @InvocableVariable(label='Count', description='Number of FAQs')
+        @InvocableVariable(description='Number of FAQs returned')
         public Integer count;
-        @InvocableVariable(label='FAQs', description='FAQ list')
+        @InvocableVariable(description='List of FAQ objects with domanda and risposta')
         public List<Faq> faqs;
-        @InvocableVariable(label='Message', description='Status message')
+        @InvocableVariable(description='Success or error message')
         public String message;
-        @InvocableVariable(label='Error Code', description='Error code')
+        @InvocableVariable(description='Error code if failed')
         public String errorCode;
         public FaqResponse() {
             this.success = false;
@@ -124,9 +124,9 @@ public with sharing class Iren_Gruppo_Assistenza_Faq {
     }
 
     public class Faq {
-        @InvocableVariable(label='Domanda', description='FAQ question')
+        @InvocableVariable(description='The FAQ question')
         public String domanda;
-        @InvocableVariable(label='Risposta', description='FAQ answer')
+        @InvocableVariable(description='The FAQ answer')
         public String risposta;
     }
 
