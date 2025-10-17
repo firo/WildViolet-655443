@@ -88,81 +88,97 @@ def scrape_faq():
         accordion_items = soup.find_all(['div', 'section'], class_=lambda x: x and ('accordion' in x.lower() or 'faq' in x.lower()))
         logger.info(f"Found {len(accordion_items)} accordion containers")
 
-        # Try finding individual FAQ items
-        # Look for Bootstrap accordion structure
-        faq_items = soup.find_all('div', class_=lambda x: x and 'accordion-item' in x)
-
-        if not faq_items:
-            # Try alternative structure
-            faq_items = soup.find_all('div', class_=lambda x: x and 'collapse' in x)
-            logger.info(f"Found {len(faq_items)} collapsible items")
-        else:
-            logger.info(f"Found {len(faq_items)} accordion items")
+        # Find all accordion buttons (questions)
+        buttons = soup.find_all('button', attrs={'data-bs-toggle': 'collapse'})
+        logger.info(f"Found {len(buttons)} FAQ buttons")
 
         processed_count = 0
 
-        # Process each FAQ item
-        for item in faq_items:
+        # Process each button and its associated collapse div
+        for button in buttons:
             try:
-                # Find the question - usually in a button or header
-                question_elem = item.find_previous('button') or item.find_previous(['h2', 'h3', 'h4', 'h5'])
+                # Get the question text from the button
+                question_text = button.get_text(strip=True)
 
-                if not question_elem:
-                    # Try finding within parent
-                    parent = item.find_parent('div', class_=lambda x: x and 'accordion-item' in x if x else False)
-                    if parent:
-                        question_elem = parent.find('button')
-
-                if not question_elem:
+                if not question_text or len(question_text) < 5:
                     continue
 
-                question_text = question_elem.get_text(strip=True)
+                # Find the associated collapse div using aria-controls or data-bs-target
+                target_id = button.get('data-bs-target') or button.get('aria-controls')
 
-                # Get the answer from the collapse div
-                answer_text = item.get_text(strip=True)
+                if target_id:
+                    # Remove the # if present
+                    target_id = target_id.lstrip('#')
 
-                # Skip if no valid content
-                if not question_text or not answer_text or len(answer_text) < 10:
-                    continue
+                    # Find the collapse div by ID
+                    collapse_div = soup.find('div', id=target_id)
 
-                # Remove the question from answer if it's included
-                if answer_text.startswith(question_text):
-                    answer_text = answer_text[len(question_text):].strip()
+                    if collapse_div:
+                        # Get the answer text from the collapse div
+                        answer_text = collapse_div.get_text(strip=True)
 
-                # Determine category by looking at parent sections
-                category = "acqua"  # Default
+                        # Skip if no valid content
+                        if not answer_text or len(answer_text) < 10:
+                            continue
 
-                # Look for category indicators in parent elements
-                parent_section = item.find_parent(['section', 'div'], id=True)
-                if parent_section:
-                    section_id = parent_section.get('id', '').lower()
-                    section_class = ' '.join(parent_section.get('class', [])).lower()
-                    section_text = parent_section.get_text().lower()
+                        # Clean up the answer - sometimes it contains the question
+                        if answer_text.startswith(question_text):
+                            answer_text = answer_text[len(question_text):].strip()
 
-                    combined_text = f"{section_id} {section_class}"
+                        # Determine category by looking at parent sections
+                        category = "acqua"  # Default
 
-                    if 'teleriscaldamento' in combined_text or 'teleriscaldamento' in section_text[:200]:
-                        category = "teleriscaldamento"
-                    elif 'ambiente' in combined_text or 'ambiente' in section_text[:200]:
-                        category = "ambiente"
-                    elif 'reti' in combined_text or 'rete' in combined_text:
-                        category = "reti"
-                    elif 'acqua' in combined_text or 'acqua' in section_text[:200]:
-                        category = "acqua"
+                        # Look for category indicators in parent elements
+                        parent_section = button.find_parent(['section', 'div'], id=True)
+                        if not parent_section:
+                            parent_section = collapse_div.find_parent(['section', 'div'], id=True)
 
-                faq_item = {
-                    "domanda": question_text,
-                    "risposta": answer_text
-                }
+                        if parent_section:
+                            section_id = parent_section.get('id', '').lower()
+                            section_class = ' '.join(parent_section.get('class', [])).lower()
 
-                faq_data[category].append(faq_item)
-                processed_count += 1
+                            combined_text = f"{section_id} {section_class}"
 
-                if processed_count <= 5:  # Log first few for debugging
-                    logger.info(f"Extracted FAQ: {question_text[:60]}... -> {category}")
+                            if 'teleriscaldamento' in combined_text:
+                                category = "teleriscaldamento"
+                            elif 'ambiente' in combined_text:
+                                category = "ambiente"
+                            elif 'reti' in combined_text or 'rete' in combined_text:
+                                category = "reti"
+                            elif 'acqua' in combined_text:
+                                category = "acqua"
+
+                        # If still no category found, look in the surrounding text
+                        if category == "acqua":
+                            # Get the parent accordion container
+                            accordion_parent = button.find_parent('div', class_=lambda x: x and 'accordion' in x.lower() if x else False)
+                            if accordion_parent:
+                                # Look for a header or title near this accordion
+                                prev_heading = accordion_parent.find_previous(['h1', 'h2', 'h3', 'h4'])
+                                if prev_heading:
+                                    heading_text = prev_heading.get_text().lower()
+                                    if 'teleriscaldamento' in heading_text:
+                                        category = "teleriscaldamento"
+                                    elif 'ambiente' in heading_text:
+                                        category = "ambiente"
+                                    elif 'reti' in heading_text or 'rete' in heading_text:
+                                        category = "reti"
+                                    elif 'acqua' in heading_text:
+                                        category = "acqua"
+
+                        faq_item = {
+                            "domanda": question_text,
+                            "risposta": answer_text
+                        }
+
+                        faq_data[category].append(faq_item)
+                        processed_count += 1
+
+                        if processed_count <= 5:  # Log first few for debugging
+                            logger.info(f"Extracted FAQ {processed_count}: {question_text[:60]}... -> {category}")
 
             except Exception as e:
-                logger.warning(f"Error processing FAQ item: {str(e)}")
+                logger.warning(f"Error processing FAQ button: {str(e)}")
                 continue
 
         # Count total FAQs extracted
