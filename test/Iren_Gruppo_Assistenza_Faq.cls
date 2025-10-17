@@ -33,8 +33,8 @@ public with sharing class Iren_Gruppo_Assistenza_Faq {
      * @return List<FaqResponse> containing the FAQ data
      */
     @InvocableMethod(
-        label='Get Iren FAQ by Category'
-        description='Retrieves FAQ data from Gruppo Iren API filtered by category'
+        label='Get Iren FAQ by Category',
+        description='Retrieves FAQ data from Gruppo Iren API filtered by category',
         category='Iren Assistenza'
     )
     public static List<FaqResponse> getFaqsByCategory(List<FaqRequest> requests) {
@@ -181,8 +181,8 @@ public with sharing class Iren_Gruppo_Assistenza_Faq {
      */
     public class FaqRequest {
         @InvocableVariable(
-            label='Categoria'
-            description='Category to filter FAQs (acqua, ambiente, reti, teleriscaldamento)'
+            label='Categoria',
+            description='Category to filter FAQs (acqua, ambiente, reti, teleriscaldamento)',
             required=true
         )
         public String categoria;
@@ -192,22 +192,22 @@ public with sharing class Iren_Gruppo_Assistenza_Faq {
      * @description Output wrapper for invocable method
      */
     public class FaqResponse {
-        @InvocableVariable(label='Success' description='Whether the request was successful')
+        @InvocableVariable(label='Success', description='Whether the request was successful')
         public Boolean success;
 
-        @InvocableVariable(label='Categoria' description='The category requested')
+        @InvocableVariable(label='Categoria', description='The category requested')
         public String categoria;
 
-        @InvocableVariable(label='Count' description='Number of FAQs returned')
+        @InvocableVariable(label='Count', description='Number of FAQs returned')
         public Integer count;
 
-        @InvocableVariable(label='FAQs' description='List of FAQ objects')
+        @InvocableVariable(label='FAQs', description='List of FAQ objects')
         public List<Faq> faqs;
 
-        @InvocableVariable(label='Message' description='Success or error message')
+        @InvocableVariable(label='Message', description='Success or error message')
         public String message;
 
-        @InvocableVariable(label='Error Code' description='Error code if failed')
+        @InvocableVariable(label='Error Code', description='Error code if failed')
         public String errorCode;
 
         public FaqResponse() {
@@ -221,10 +221,10 @@ public with sharing class Iren_Gruppo_Assistenza_Faq {
      * @description FAQ data wrapper
      */
     public class Faq {
-        @InvocableVariable(label='Domanda' description='The FAQ question')
+        @InvocableVariable(label='Domanda', description='The FAQ question')
         public String domanda;
 
-        @InvocableVariable(label='Risposta' description='The FAQ answer')
+        @InvocableVariable(label='Risposta', description='The FAQ answer')
         public String risposta;
     }
 
