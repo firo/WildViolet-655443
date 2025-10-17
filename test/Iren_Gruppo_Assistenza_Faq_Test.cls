@@ -1,6 +1,6 @@
 /**
  * @description Test class for Iren_Gruppo_Assistenza_Faq
- * @author Francesco Iro
+ * @author Firo
  * @date 2025-10-17
  *
  * Provides 100% test coverage for the Iren FAQ API integration class
