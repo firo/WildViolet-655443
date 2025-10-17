@@ -58,21 +58,35 @@ def scrape_faq():
             "reti": []
         }
 
-        # Use JavaScript to expand all accordion items at once
+        # Use JavaScript to expand all accordion items at once - try multiple selectors
         # This avoids stale element references
         expand_script = """
-        var buttons = document.querySelectorAll('button[data-bs-toggle="collapse"]');
-        console.log('Found ' + buttons.length + ' accordion buttons');
-        buttons.forEach(function(btn) {
-            try {
-                if (btn.getAttribute('aria-expanded') !== 'true') {
-                    btn.click();
+        var selectors = [
+            'button[data-bs-toggle="collapse"]',
+            'button[data-toggle="collapse"]',
+            '[data-bs-toggle="collapse"]',
+            '[data-toggle="collapse"]',
+            '.accordion-button',
+            'button[aria-expanded]'
+        ];
+        var totalExpanded = 0;
+
+        selectors.forEach(function(selector) {
+            var elements = document.querySelectorAll(selector);
+            console.log('Selector ' + selector + ' found ' + elements.length + ' elements');
+            elements.forEach(function(btn) {
+                try {
+                    if (btn.getAttribute('aria-expanded') !== 'true') {
+                        btn.click();
+                        totalExpanded++;
+                    }
+                } catch(e) {
+                    console.log('Error clicking element:', e);
                 }
-            } catch(e) {
-                console.log('Error clicking button:', e);
-            }
+            });
         });
-        return buttons.length;
+
+        return totalExpanded;
         """
 
         num_expanded = driver.execute_script(expand_script)
@@ -84,101 +98,94 @@ def scrape_faq():
         # Now parse the fully expanded page with BeautifulSoup
         soup = BeautifulSoup(driver.page_source, 'html.parser')
 
-        # Find accordion items - common Bootstrap structure
-        accordion_items = soup.find_all(['div', 'section'], class_=lambda x: x and ('accordion' in x.lower() or 'faq' in x.lower()))
-        logger.info(f"Found {len(accordion_items)} accordion containers")
-
-        # Find all accordion buttons (questions)
-        buttons = soup.find_all('button', attrs={'data-bs-toggle': 'collapse'})
-        logger.info(f"Found {len(buttons)} FAQ buttons")
+        # Find accordion items - look for the actual structure
+        accordion_items = soup.find_all('div', class_=lambda x: x and 'accordion-item' in x if x else False)
+        logger.info(f"Found {len(accordion_items)} accordion items with class 'accordion-item'")
 
         processed_count = 0
 
-        # Process each button and its associated collapse div
-        for button in buttons:
+        # Process each accordion item
+        for idx, item in enumerate(accordion_items):
             try:
-                # Get the question text from the button
+                # Find the button/header within this accordion item
+                button = item.find('button') or item.find(['h2', 'h3', 'h4', 'h5'])
+
+                if not button:
+                    continue
+
                 question_text = button.get_text(strip=True)
 
                 if not question_text or len(question_text) < 5:
                     continue
 
-                # Find the associated collapse div using aria-controls or data-bs-target
-                target_id = button.get('data-bs-target') or button.get('aria-controls')
+                # Find the collapse div within this same accordion item
+                collapse_div = item.find('div', class_=lambda x: x and ('collapse' in x or 'accordion-collapse' in x) if x else False)
 
-                if target_id:
-                    # Remove the # if present
-                    target_id = target_id.lstrip('#')
+                if not collapse_div:
+                    # Try finding the next sibling
+                    collapse_div = button.find_next_sibling('div')
 
-                    # Find the collapse div by ID
-                    collapse_div = soup.find('div', id=target_id)
+                if collapse_div:
+                    # Get the answer text from the collapse div
+                    answer_text = collapse_div.get_text(strip=True)
 
-                    if collapse_div:
-                        # Get the answer text from the collapse div
-                        answer_text = collapse_div.get_text(strip=True)
+                    # Skip if no valid content
+                    if not answer_text or len(answer_text) < 10:
+                        continue
 
-                        # Skip if no valid content
-                        if not answer_text or len(answer_text) < 10:
-                            continue
+                    # Clean up the answer - remove the question if it's at the start
+                    if answer_text.startswith(question_text):
+                        answer_text = answer_text[len(question_text):].strip()
 
-                        # Clean up the answer - sometimes it contains the question
-                        if answer_text.startswith(question_text):
-                            answer_text = answer_text[len(question_text):].strip()
+                    # Determine category by looking at parent sections
+                    category = "acqua"  # Default
 
-                        # Determine category by looking at parent sections
-                        category = "acqua"  # Default
+                    # Look for category indicators in parent elements
+                    parent_section = item.find_parent(['section', 'div'], id=True)
 
-                        # Look for category indicators in parent elements
-                        parent_section = button.find_parent(['section', 'div'], id=True)
-                        if not parent_section:
-                            parent_section = collapse_div.find_parent(['section', 'div'], id=True)
+                    if parent_section:
+                        section_id = parent_section.get('id', '').lower()
+                        section_class = ' '.join(parent_section.get('class', [])).lower()
 
-                        if parent_section:
-                            section_id = parent_section.get('id', '').lower()
-                            section_class = ' '.join(parent_section.get('class', [])).lower()
+                        combined_text = f"{section_id} {section_class}"
 
-                            combined_text = f"{section_id} {section_class}"
+                        if 'teleriscaldamento' in combined_text:
+                            category = "teleriscaldamento"
+                        elif 'ambiente' in combined_text:
+                            category = "ambiente"
+                        elif 'reti' in combined_text or 'rete' in combined_text:
+                            category = "reti"
+                        elif 'acqua' in combined_text:
+                            category = "acqua"
 
-                            if 'teleriscaldamento' in combined_text:
+                    # If still no category found, look for nearby headings
+                    if category == "acqua":
+                        # Look for a heading before this accordion item
+                        prev_heading = item.find_previous(['h1', 'h2', 'h3', 'h4'])
+                        if prev_heading:
+                            heading_text = prev_heading.get_text().lower()
+                            if 'teleriscaldamento' in heading_text:
                                 category = "teleriscaldamento"
-                            elif 'ambiente' in combined_text:
+                            elif 'ambiente' in heading_text:
                                 category = "ambiente"
-                            elif 'reti' in combined_text or 'rete' in combined_text:
+                            elif 'reti' in heading_text or 'rete' in heading_text:
                                 category = "reti"
-                            elif 'acqua' in combined_text:
+                            elif 'acqua' in heading_text:
                                 category = "acqua"
 
-                        # If still no category found, look in the surrounding text
-                        if category == "acqua":
-                            # Get the parent accordion container
-                            accordion_parent = button.find_parent('div', class_=lambda x: x and 'accordion' in x.lower() if x else False)
-                            if accordion_parent:
-                                # Look for a header or title near this accordion
-                                prev_heading = accordion_parent.find_previous(['h1', 'h2', 'h3', 'h4'])
-                                if prev_heading:
-                                    heading_text = prev_heading.get_text().lower()
-                                    if 'teleriscaldamento' in heading_text:
-                                        category = "teleriscaldamento"
-                                    elif 'ambiente' in heading_text:
-                                        category = "ambiente"
-                                    elif 'reti' in heading_text or 'rete' in heading_text:
-                                        category = "reti"
-                                    elif 'acqua' in heading_text:
-                                        category = "acqua"
+                    faq_item = {
+                        "domanda": question_text,
+                        "risposta": answer_text
+                    }
 
-                        faq_item = {
-                            "domanda": question_text,
-                            "risposta": answer_text
-                        }
+                    faq_data[category].append(faq_item)
+                    processed_count += 1
 
-                        faq_data[category].append(faq_item)
-                        processed_count += 1
-
-                        if processed_count <= 5:  # Log first few for debugging
-                            logger.info(f"Extracted FAQ {processed_count}: {question_text[:60]}... -> {category}")
+                    if processed_count <= 5:  # Log first few for debugging
+                        logger.info(f"Extracted FAQ {processed_count}: {question_text[:60]}... (category: {category})")
 
             except Exception as e:
-                logger.warning(f"Error processing FAQ button: {str(e)}")
+                logger.warning(f"Error processing accordion item {idx}: {str(e)}")
                 continue
 
         # Count total FAQs extracted
