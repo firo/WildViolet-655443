@@ -628,7 +628,7 @@ Questo progetto è open source e disponibile sotto [MIT License](LICENSE).
 
 ## 👥 Autori
 
-- **Francesco Iro** - [GitHub](https://github.com/firo)
+- **Firo** - [GitHub](https://github.com/firo)
 
 ---
 
