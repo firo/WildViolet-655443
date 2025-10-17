@@ -33,8 +33,8 @@ public with sharing class Iren_Gruppo_Assistenza_Faq {
      * @return List<FaqResponse> containing the FAQ data
      */
     @InvocableMethod(
-        label='Get Iren FAQ by Category',
-        description='Retrieves FAQ data from Gruppo Iren API filtered by category',
+        label='Cerco nelle FAQ di Assistenza del sito di Gruppo Iren',
+        description='Questo servizio Apex interroga le FAQ Assistenza Gruppo Iren.',
         category='Iren Assistenza'
     )
     public static List<FaqResponse> getFaqsByCategory(List<FaqRequest> requests) {
