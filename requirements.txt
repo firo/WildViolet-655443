@@ -1,0 +1,5 @@
+Flask==3.0.0
+selenium==4.16.0
+beautifulsoup4==4.12.2
+gunicorn==21.2.0
+lxml==5.1.0
