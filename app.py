@@ -15,7 +15,8 @@ def home():
     return jsonify({
         "message": "Gruppo Iren FAQ Scraper API",
         "endpoints": {
-            "/api/faq": "Get all FAQ data organized by category"
+            "/api/faq": "Get all FAQ data organized by category",
+            "/api/faq/<category>": "Get FAQ data for a specific category"
         },
         "categories": ["teleriscaldamento", "acqua", "ambiente", "reti"]
     })
@@ -30,6 +31,43 @@ def get_faq():
         return jsonify(faq_data)
     except Exception as e:
         logger.error(f"Error scraping FAQ: {str(e)}")
+        return jsonify({
+            "error": "Failed to scrape FAQ data",
+            "message": str(e)
+        }), 500
+
+@app.route('/api/faq/<categoria>', methods=['GET'])
+def get_faq_by_category(categoria):
+    """API endpoint to get FAQ data for a specific category"""
+    # Valid categories
+    valid_categories = ["teleriscaldamento", "acqua", "ambiente", "reti"]
+
+    # Normalize category input
+    categoria = categoria.lower().strip()
+
+    # Validate category
+    if categoria not in valid_categories:
+        return jsonify({
+            "error": "Invalid category",
+            "message": f"Category '{categoria}' is not valid. Valid categories are: {', '.join(valid_categories)}",
+            "valid_categories": valid_categories
+        }), 404
+
+    try:
+        logger.info(f"Starting FAQ scraping for category: {categoria}...")
+        faq_data = scrape_faq()
+
+        # Return only the requested category
+        category_data = faq_data.get(categoria, [])
+        logger.info(f"Returning {len(category_data)} FAQs for category '{categoria}'")
+
+        return jsonify({
+            "categoria": categoria,
+            "count": len(category_data),
+            "faqs": category_data
+        })
+    except Exception as e:
+        logger.error(f"Error scraping FAQ for category {categoria}: {str(e)}")
         return jsonify({
             "error": "Failed to scrape FAQ data",
             "message": str(e)
